@@ -1,0 +1,20 @@
+# GPU ワーカー用(ARM64 / NVIDIA GB10)
+# PyTorch と CUDA はベースイメージに含まれる
+ARG BASE_IMAGE=nvcr.io/nvidia/pytorch:25.09-py3
+FROM ${BASE_IMAGE}
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements-worker.txt .
+RUN pip install --no-cache-dir -r requirements-worker.txt
+
+COPY app ./app
+COPY worker ./worker
+COPY seed ./seed
+
+ENV PYTHONUNBUFFERED=1 \
+    TOKENIZERS_PARALLELISM=false

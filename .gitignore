@@ -1,0 +1,9 @@
+.env
+data/
+cache/
+node_modules/
+.next/
+__pycache__/
+*.pyc
+*.egg-info/
+.DS_Store

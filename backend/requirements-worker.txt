@@ -1,0 +1,6 @@
+celery[redis]>=5.4
+sqlalchemy>=2.0
+psycopg[binary]>=3.2
+pillow>=10.4
+transformers>=4.53,<5
+accelerate>=1.0
