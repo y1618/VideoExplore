@@ -89,9 +89,9 @@ services:
       EMBED_MODEL: ${EMBED_MODEL:-google/siglip2-base-patch16-256}
       TAG_THRESHOLD: ${TAG_THRESHOLD:-0.30}
       FRAMES_PER_VIDEO: ${FRAMES_PER_VIDEO:-12}
-      GLM_ENABLED: ${GLM_ENABLED:-true}
-      GLM_API_URL: ${GLM_API_URL:-http://host.docker.internal:8888/v1}
-      GLM_MODEL: ${GLM_MODEL:-GLM-5.3-Flash-EXL3}
+      VLM_ENABLED: ${VLM_ENABLED:-true}
+      VLM_API_URL: ${VLM_API_URL:-http://host.docker.internal:8888/v1}
+      VLM_MODEL: ${VLM_MODEL:-deepseek-v4-flash-vision-exp}
       HF_HOME: /data/cache/hf
       TOKENIZERS_PARALLELISM: "false"
     extra_hosts:

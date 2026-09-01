@@ -8,8 +8,8 @@ Samba 上の大量動画を検索可能にする動画セマンティック検�
 - ✅ **テキスト検索 → 動画リスト可視化 → 即再生**(P1 + P3 一部)
   - スキャン → ffprobe メタ取得 → サムネイル生成
   - SigLIP2 ゼロショット自動タグ付け(GPU)
-  - **GLM-5.3-Flash(ローカル vLLM)による映像説明文・タグ生成**(1動画約10秒)
-  - 検索対象: タグ(日英エイリアス)+ ファイル名 + **GLM 日本語説明文**
+  - **VLM(ローカル vLLM: DeepSeek-V4 Flash Vision Exp)による映像説明文・タグ生成**(1動画約10秒)
+  - 検索対象: タグ(日英エイリアス)+ ファイル名 + **VLM 日本語説明文**
   - 結果をサムネイルグリッドで可視化、クリックで即再生(Range ストリーミング)
 - ⬜ シーン分割・フレーム/車両埋め込み・画像検索(P2)
 - ⬜ pgroonga 導入・セマンティックベクトル検索(P3 本体)
@@ -37,8 +37,8 @@ curl -X POST http://localhost:8010/api/admin/scan
 | ポート | 用途 | 備考 |
 |---|---|---|
 | 3001 | **Web UI(nginx ゲートウェイ)** | ブラウザはここだけ使う。3000 は既存 Open WebUI と衝突 |
-| 8010 | API 直アクセス用 | 8000 は GLM vLLM(NVFP4/TP2)用に予約 |
-| 8888 | GLM-5.3-Flash vLLM(既存) | VideoExplore から利用 |
+| 8010 | API 直アクセス用 | 8000 は vLLM(NVFP4/TP2)用に予約 |
+| 8888 | VLM vLLM(既存) | VideoExplore から利用 |
 
 ### Samba の動画を対象にする
 
@@ -54,7 +54,7 @@ sudo mount -t cifs //NASのIP/共有名 ./data/videos \
 ## パイプライン(動画の状態遷移)
 
 ```
-discovered → processing(メタ+サムネ) → ingested → tagging(SigLIP2) → caption(GLM-5.3) → ready
+discovered → processing(メタ+サムネ) → ingested → tagging(SigLIP2) → caption(VLM) → ready
 ```
 
 `ready` 以前でも一覧・ファイル名検索・再生は可能。タグ/説明文は解析後に付与。
@@ -64,9 +64,9 @@ discovered → processing(メタ+サムネ) → ingested → tagging(SigLIP2) �
 
 | メソッド | パス | 内容 |
 |---|---|---|
-| GET | `/api/search?q=&page=` | テキスト検索(GLM説明文+タグ+ファイル名) |
+| GET | `/api/search?q=&page=` | テキスト検索(VLM説明文+タグ+ファイル名) |
 | GET | `/api/videos?page=` | ライブラリ一覧 |
-| GET | `/api/videos/{id}` | 動画詳細(GLM説明文を含む) |
+| GET | `/api/videos/{id}` | 動画詳細(VLM説明文を含む) |
 | GET | `/api/videos/{id}/thumb` | サムネイル |
 | GET | `/api/videos/{id}/stream` | 動画ストリーミング(Range 対応) |
 | GET | `/api/tags` | タグ語彙と件数 |
@@ -83,14 +83,14 @@ discovered → processing(メタ+サムネ) → ingested → tagging(SigLIP2) �
 | `EMBED_MODEL` | `google/siglip2-base-patch16-256` | タグ付けモデル |
 | `TAG_THRESHOLD` | `0.05` | タグ採用しきい値(softmax確率) |
 | `FRAMES_PER_VIDEO` | `12` | 動画あたり解析フレーム数 |
-| `GLM_ENABLED` | `true` | GLM キャプションの有効化 |
-| `GLM_API_URL` | `http://host.docker.internal:8888/v1` | vLLM OpenAI互換API |
-| `GLM_MODEL` | `GLM-5.3-Flash-EXL3` | モデルID(/v1/models の id) |
+| `VLM_ENABLED` | `true` | VLM キャプションの有効化 |
+| `VLM_API_URL` | `http://host.docker.internal:8888/v1` | vLLM OpenAI互換API |
+| `VLM_MODEL` | `deepseek-v4-flash-vision-exp` | モデルID(/v1/models の id) |
 | `CAPTION_FRAMES` | `3` | キャプションに使うキーフレーム数 |
 
 ## トラブルシューティング
 
 - GPU が見えるか: `docker compose exec worker-gpu nvidia-smi`
-- GLM サーバ確認: `curl http://localhost:8888/v1/models`
+- VLM サーバ確認: `curl http://localhost:8888/v1/models`
 - タグが付かない → `docker compose logs worker-gpu` / `POST /api/admin/reanalyze`
-- GLM キャプション失敗 → GLM サーバ起動確認と `reanalyze` で再実行
+- VLM キャプション失敗 → VLM サーバ起動確認と `reanalyze` で再実行

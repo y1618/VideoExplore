@@ -94,7 +94,7 @@ export default function WatchPage() {
 
       {video.description && (
         <div className="mt-3 rounded-xl bg-neutral-900 ring-1 ring-neutral-800 p-3.5">
-          <p className="text-[11px] text-emerald-400 mb-1">GLM-5.3 による映像解析</p>
+          <p className="text-[11px] text-emerald-400 mb-1">VLM による映像解析</p>
           <p className="text-sm leading-relaxed">{video.description}</p>
           {video.descriptionEn && (
             <p className="mt-1.5 text-xs text-neutral-500 leading-relaxed">{video.descriptionEn}</p>

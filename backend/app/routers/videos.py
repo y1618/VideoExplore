@@ -126,7 +126,7 @@ def search(
         ).all()
         fn_scores = {r.id: 3.0 + 0.5 * float(r.sim or 0.0) for r in fn_rows}
 
-        # 説明文(GLM)一致
+        # 説明文(VLM)一致
         desc_rows = db.execute(
             text(
                 """
@@ -190,7 +190,7 @@ def search(
     by_id = {v.id: v for v in videos}
     tag_map = _tags_for(db, list(page_ids))
 
-    # 説明文(GLM)を取得
+    # 説明文(VLM)を取得
     from app.models import Scene
 
     scene_map: dict[int, Scene] = {}

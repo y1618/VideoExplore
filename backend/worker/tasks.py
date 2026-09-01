@@ -170,7 +170,7 @@ def tag_video(self, video_id: int):
             _mark_error(video_id, "no frames extracted")
             return {"error": "no frames"}
 
-        # GLM キャプション用にキーフレームをキャッシュへ保存
+        # VLM キャプション用にキーフレームをキャッシュへ保存
         kf_dir = os.path.join(settings.cache_dir, "frames", str(video_id))
         os.makedirs(kf_dir, exist_ok=True)
         n_kf = max(1, min(settings.caption_frames, len(frame_paths)))
@@ -219,12 +219,12 @@ def tag_video(self, video_id: int):
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    if settings.glm_enabled:
+    if settings.vlm_enabled:
         caption_video.delay(video_id)
     return result
 
 
-GLM_PROMPT = """あなたは動画解析アシスタントです。同じ動画から抽出した最大3枚のフレームを渡します。
+VLM_PROMPT = """あなたは動画解析アシスタントです。同じ動画から抽出した最大3枚のフレームを渡します。
 映像全体を分析し、**必ず次の形式のJSONのみ**を出力してください。前置き・説明・コードブロックは禁止です。
 
 {"description_ja": "映像の具体的な日本語説明(1〜3文)。場所・人物・車両・動作・天候・時間帯・光の状態(影・逆光・暗さ等)を含める",
@@ -235,7 +235,7 @@ GLM_PROMPT = """あなたは動画解析アシスタントです。同じ動画�
  "lighting": "影が強い/逆光/順光/人工照明/不明 のいずれか"}"""
 
 
-def _glm_chat(image_uris: list[str], prompt: str) -> str:
+def _vlm_chat(image_uris: list[str], prompt: str) -> str:
     import urllib.request
 
     from app.config import settings
@@ -245,14 +245,14 @@ def _glm_chat(image_uris: list[str], prompt: str) -> str:
     ]
     content.append({"type": "text", "text": prompt})
     payload = {
-        "model": settings.glm_model,
+        "model": settings.vlm_model,
         "messages": [{"role": "user", "content": content}],
         "max_tokens": 800,
         "temperature": 0.2,
         "chat_template_kwargs": {"enable_thinking": False},
     }
     req = urllib.request.Request(
-        settings.glm_api_url.rstrip("/") + "/chat/completions",
+        settings.vlm_api_url.rstrip("/") + "/chat/completions",
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json"},
     )
@@ -272,11 +272,11 @@ def _extract_json(text: str) -> dict:
 
 @celery_app.task(bind=True, name="worker.tasks.caption_video", max_retries=2, default_retry_delay=20)
 def caption_video(self, video_id: int):
-    """GLM-5.3-Flash(vLLM OpenAI互換API)でキーフレームを解析し、説明文を生成。"""
+    """VLM(vLLM OpenAI互換API)でキーフレームを解析し、説明文を生成。"""
     from app.config import settings
 
-    if not settings.glm_enabled:
-        return {"skipped": "glm disabled"}
+    if not settings.vlm_enabled:
+        return {"skipped": "vlm disabled"}
 
     kf_dir = os.path.join(settings.cache_dir, "frames", str(video_id))
     kf_paths = sorted(glob.glob(os.path.join(kf_dir, "kf_*.jpg")))
@@ -292,10 +292,10 @@ def caption_video(self, video_id: int):
     last_err = None
     for attempt in range(2):
         try:
-            prompt = GLM_PROMPT if attempt == 0 else (
-                GLM_PROMPT + "\n\n注意: 先ほどの出力は不正でした。**JSONのみ**を正確に出力してください。"
+            prompt = VLM_PROMPT if attempt == 0 else (
+                VLM_PROMPT + "\n\n注意: 先ほどの出力は不正でした。**JSONのみ**を正確に出力してください。"
             )
-            raw = _glm_chat(uris, prompt)
+            raw = _vlm_chat(uris, prompt)
             parsed = _extract_json(raw)
             break
         except Exception as exc:  # noqa: BLE001
@@ -328,10 +328,10 @@ def caption_video(self, video_id: int):
                 tags=tags,
             )
         )
-        # GLM のタグも語彙に登録し、video_tags に反映(検索対象にする)
+        # VLM のタグも語彙に登録し、video_tags に反映(検索対象にする)
         for tag in tags:
             if not db.get(Taxonomy, tag):
-                db.add(Taxonomy(tag=tag, aliases=[], category="GLM"))
+                db.add(Taxonomy(tag=tag, aliases=[], category="VLM"))
             existing = db.get(VideoTag, (video_id, tag))
             if not existing:
                 db.add(

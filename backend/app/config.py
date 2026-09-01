@@ -37,10 +37,10 @@ class Settings:
     tag_threshold: float = _env_float("TAG_THRESHOLD", 0.30)
     frames_per_video: int = _env_int("FRAMES_PER_VIDEO", 12)
 
-    # GLM(GLM-5.3-Flash vLLM サーバ:ホスト側でポート8888稼働前提)
-    glm_enabled: bool = _env_str("GLM_ENABLED", "true").lower() == "true"
-    glm_api_url: str = _env_str("GLM_API_URL", "http://host.docker.internal:8888/v1")
-    glm_model: str = _env_str("GLM_MODEL", "GLM-5.3-Flash-EXL3")
+    # VLM(vLLM サーバ:ホスト側でポート8888稼働前提)
+    vlm_enabled: bool = _env_str("VLM_ENABLED", "true").lower() == "true"
+    vlm_api_url: str = _env_str("VLM_API_URL", "http://host.docker.internal:8888/v1")
+    vlm_model: str = _env_str("VLM_MODEL", "deepseek-v4-flash-vision-exp")
     caption_frames: int = _env_int("CAPTION_FRAMES", 3)
 
     # 起動時挙動
