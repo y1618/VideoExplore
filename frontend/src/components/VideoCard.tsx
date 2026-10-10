@@ -37,7 +37,15 @@ const STATUS_LABEL: Record<string, string> = {
   error: "エラー",
 };
 
-export default function VideoCard({ item, query }: { item: VideoItem; query?: string }) {
+export default function VideoCard({
+  item,
+  query,
+  highlight,
+}: {
+  item: VideoItem;
+  query?: string;
+  highlight?: boolean;
+}) {
   const [imgOk, setImgOk] = useState(true);
   const topTags = item.tags.slice(0, 4);
   const matched = query ? item.tags.find((t) => t.tag === query) : undefined;
@@ -45,7 +53,12 @@ export default function VideoCard({ item, query }: { item: VideoItem; query?: st
   return (
     <Link
       href={`/watch/${item.id}`}
-      className="group block rounded-xl overflow-hidden bg-neutral-900 ring-1 ring-neutral-800 hover:ring-emerald-500/60 transition"
+      data-vid={item.id}
+      className={`group block rounded-xl overflow-hidden bg-neutral-900 ring-1 transition ${
+        highlight
+          ? "ring-2 ring-emerald-400"
+          : "ring-neutral-800 hover:ring-emerald-500/60"
+      }`}
     >
       <div className="relative aspect-video bg-neutral-800">
         {imgOk && (
@@ -65,6 +78,12 @@ export default function VideoCard({ item, query }: { item: VideoItem; query?: st
         {item.duration != null && item.duration > 0 && (
           <span className="absolute bottom-1.5 right-1.5 text-[11px] bg-black/75 text-white px-1.5 py-0.5 rounded">
             {fmtDuration(item.duration)}
+          </span>
+        )}
+        {(item.favorite || item.deleteMarked) && (
+          <span className="absolute bottom-1.5 left-1.5 flex items-center gap-1 text-sm leading-none drop-shadow">
+            {item.favorite && <span className="text-amber-400">★</span>}
+            {item.deleteMarked && <span className="text-red-400">🗑</span>}
           </span>
         )}
         {item.status !== "ready" && (
@@ -98,7 +117,9 @@ export default function VideoCard({ item, query }: { item: VideoItem; query?: st
               className={`text-[11px] px-1.5 py-0.5 rounded ${
                 matched && t.tag === matched.tag
                   ? "bg-emerald-600/30 text-emerald-300 ring-1 ring-emerald-600/50"
-                  : "bg-neutral-800 text-neutral-300"
+                  : t.category === "user"
+                    ? "bg-pink-600/20 text-pink-300 ring-1 ring-pink-600/40"
+                    : "bg-neutral-800 text-neutral-300"
               }`}
             >
               {t.tag}

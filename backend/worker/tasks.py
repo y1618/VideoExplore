@@ -2,6 +2,7 @@ import base64
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -138,7 +139,9 @@ def tag_video(self, video_id: int):
             db.commit()
             return {"skipped": "no taxonomy"}
 
-        prompts = [(t.aliases[0] if t.aliases else t.tag) for t in taxonomies]
+        # SigLIP2 は英語中心モデルのため、日本語のみの語彙(VLM/ユーザー作成)は
+        # プロンプトにすると誤マッチが多発する。英語エイリアスを持つ語彙だけを使う。
+        prompts = [t.aliases[0] for t in taxonomies if t.aliases]
 
         video.status = "tagging"
         db.commit()
@@ -190,7 +193,14 @@ def tag_video(self, video_id: int):
 
         db = SessionLocal()
         try:
-            db.execute(delete(VideoTag).where(VideoTag.video_id == video_id))
+            # ユーザーハッシュタグ(category=user)は再タグ付けでも消さない
+            user_tag_sq = select(Taxonomy.tag).where(Taxonomy.category == "user")
+            db.execute(
+                delete(VideoTag).where(
+                    VideoTag.video_id == video_id,
+                    VideoTag.tag.not_in(user_tag_sq),
+                )
+            )
             applied = 0
             # 上位タグのみ採用(しきい値以上 & 最大12個)
             order = np.argsort(best)[::-1][:12]
@@ -219,9 +229,78 @@ def tag_video(self, video_id: int):
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
+    # ブラウザ再生できないコーデック/コンテナならプロキシ生成をキューに入れる
+    if settings.proxy_enabled:
+        from app.config import needs_proxy
+
+        if needs_proxy(video.path, video.codec):
+            generate_proxy.delay(video_id)
+
     if settings.vlm_enabled:
-        caption_video.delay(video_id)
+        # 専用 vlm キューへ(vLLM への HTTP 呼び出しのみの軽いタスクのため並列実行する)
+        caption_video.apply_async(kwargs={"video_id": video_id}, queue="vlm")
     return result
+
+
+@celery_app.task(bind=True, name="worker.tasks.generate_proxy", max_retries=1)
+def generate_proxy(self, video_id: int):
+    """ブラウザ再生できないコーデックを 720p 相当 H.264/AAC MP4(faststart)にトランスコード。
+
+    元動画は書き換えない。出力は cache/proxies/{video_id}.mp4。
+    """
+    from app.config import settings, needs_proxy
+
+    if not settings.proxy_enabled:
+        return {"skipped": "proxy disabled"}
+
+    db = SessionLocal()
+    try:
+        video = db.get(Video, video_id)
+        if video is None:
+            return {"skipped": "not found"}
+        if video.proxy_path and os.path.exists(video.proxy_path):
+            return {"skipped": "already exists"}
+        if not needs_proxy(video.path, video.codec):
+            return {"skipped": "browser playable"}
+        full_path = os.path.join(settings.video_dir, video.path)
+        if not os.path.exists(full_path):
+            return {"skipped": "file missing"}
+    finally:
+        db.close()
+
+    proxy_dir = os.path.join(settings.cache_dir, "proxies")
+    os.makedirs(proxy_dir, exist_ok=True)
+    out_path = os.path.join(proxy_dir, f"{video_id}.mp4")
+    tmp_path = out_path + ".tmp.mp4"
+
+    cmd = [
+        FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
+        "-i", full_path,
+        "-vf", f"scale='min({settings.proxy_width},iw)':-2",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", str(settings.proxy_crf),
+        "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart",
+        tmp_path,
+    ]
+    try:
+        subprocess.run(cmd, capture_output=True, timeout=1800)
+        if not os.path.exists(tmp_path) or os.path.getsize(tmp_path) < 1024:
+            raise RuntimeError("transcode produced no output")
+        os.replace(tmp_path, out_path)
+    except Exception as exc:  # noqa: BLE001
+        os.path.exists(tmp_path) and os.remove(tmp_path)
+        print(f"[proxy] video {video_id} failed: {exc}")
+        return {"error": str(exc)}
+
+    db = SessionLocal()
+    try:
+        video = db.get(Video, video_id)
+        if video:
+            video.proxy_path = out_path
+            db.commit()
+    finally:
+        db.close()
+    return {"ok": video_id}
 
 
 VLM_PROMPT = """あなたは動画解析アシスタントです。同じ動画から抽出した最大3枚のフレームを渡します。
@@ -305,6 +384,9 @@ def caption_video(self, video_id: int):
         return {"error": str(last_err)}
 
     tags = [str(t).strip() for t in parsed.get("tags", []) if str(t).strip()][:10]
+    # VLM がプロンプトのプレースホルダ等をそのままタグとして出力するケースを除外
+    # (例: 「日本語タグを5〜10個」)
+    tags = [t for t in tags if not re.search(r"タグを|\d+\s*[〜~-]\s*\d+", t)]
 
     db = SessionLocal()
     try:

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.config import needs_proxy, settings
 from app.db import get_db
 from app.services.scanner import scan_and_enqueue
 
@@ -29,6 +29,21 @@ def reanalyze(db: Session = Depends(get_db)):
     return {"enqueued": len(video_ids)}
 
 
+@router.post("/proxies")
+def generate_proxies(db: Session = Depends(get_db)):
+    """ブラウザ再生できないコーデック/コンテナの動画についてプロキシ生成をキューに入れる"""
+    from app.config import needs_proxy
+    from worker.tasks import generate_proxy
+
+    rows = db.execute(
+        text("SELECT id, path, codec FROM videos WHERE proxy_path IS NULL")
+    ).all()
+    targets = [r.id for r in rows if needs_proxy(r.path, r.codec)]
+    for vid in targets:
+        generate_proxy.delay(vid)
+    return {"enqueued": len(targets)}
+
+
 @router.get("/stats")
 def stats(db: Session = Depends(get_db)):
     rows = db.execute(
@@ -42,4 +57,14 @@ def stats(db: Session = Depends(get_db)):
     described = db.execute(
         text("SELECT COUNT(DISTINCT video_id) FROM scenes")
     ).scalar() or 0
-    return {"total": total, "tagged": tagged, "described": described, "byStatus": by_status}
+    rows = db.execute(
+        text("SELECT path, codec FROM videos WHERE proxy_path IS NULL")
+    ).all()
+    proxy_pending = sum(1 for r in rows if needs_proxy(r.path, r.codec))
+    return {
+        "total": total,
+        "tagged": tagged,
+        "described": described,
+        "proxyPending": proxy_pending,
+        "byStatus": by_status,
+    }

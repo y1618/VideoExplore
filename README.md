@@ -40,16 +40,43 @@ curl -X POST http://localhost:8010/api/admin/scan
 | 8010 | API 直アクセス用 | 8000 は vLLM(NVFP4/TP2)用に予約 |
 | 8888 | VLM vLLM(既存) | VideoExplore から利用 |
 
-### Samba の動画を対象にする
+### Samba の動画を対象にする(複数マウント対応)
 
-`VIDEO_HOST_DIR`(既定 `./data/videos`)に読み取り専用マウントする:
+`VIDEO_HOST_DIR`(既定 `./data/videos`)を親ディレクトリにし、SMB 共有をその**サブディレクトリ**に読み取り専用マウントします。複数の共有/フォルダを同時に取り込めます(スキャナが再帰走査します)。
+
+1. 認証ファイル `data/smb.cred`(gitignore 対象)を用意:
+
+   ```
+   username=<SMBユーザー>
+   password=<SMBパスワード>
+   ```
+
+2. マウント一覧 `data/smb.mounts` に1行ずつ記載(サブディレクトリ省略時はパス末尾要素):
+
+   ```
+   //<サーバー>/<共有>/<パス>
+   movie //<サーバー>/<共有>
+   ```
+
+3. マウント実行(root 必要。既に `data/videos` 自体がマウントされていた場合は自動で解除して移行):
+
+   ```bash
+   sudo bash scripts/mount_samba.sh
+   ```
+
+4. マウント追加/変更後は**コンテナを再作成**してからスキャン(バインドマウントは起動時に確定されるため):
+
+   ```bash
+   docker compose up -d --force-recreate api worker-cpu worker-gpu
+   curl -X POST http://localhost:8010/api/admin/scan
+   ```
+
+マウント構成を変えてパスが変わると同一動画が別パスで重複登録されるため、その場合は DB を一度クリアする(下記)か手動で削除してください:
 
 ```bash
-sudo mount -t cifs //NASのIP/共有名 ./data/videos \
-  -o vers=3.1.1,ro,iocharset=utf8,credentials=/etc/videoexplore/smb.cred
+docker compose exec db psql -U videoexplore -d videoexplore -c \
+  "TRUNCATE video_tags, scenes, videos, taxonomy RESTART IDENTITY CASCADE;"
 ```
-
-マウント後にスキャンすれば NAS 上の動画が順次解析される。
 
 ## パイプライン(動画の状態遷移)
 

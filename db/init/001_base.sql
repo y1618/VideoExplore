@@ -23,10 +23,25 @@ CREATE TABLE videos (
   thumbnail_path  TEXT,
   proxy_path      TEXT,
   profile         TEXT NOT NULL DEFAULT 'fast',
+  favorite        BOOLEAN NOT NULL DEFAULT FALSE,
+  delete_marked   BOOLEAN NOT NULL DEFAULT FALSE,
+  play_count      INTEGER NOT NULL DEFAULT 0,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_videos_status ON videos (status);
+CREATE INDEX idx_videos_favorite ON videos (favorite);
+CREATE INDEX idx_videos_delete_marked ON videos (delete_marked);
+
+-- ユーザーコメント(ハッシュタグ付きメモ)
+CREATE TABLE comments (
+  id         BIGSERIAL PRIMARY KEY,
+  video_id   BIGINT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+  text       TEXT NOT NULL,
+  hashtags   TEXT[] NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_comments_video ON comments (video_id);
 CREATE INDEX idx_videos_filename_trgm ON videos USING gin (filename gin_trgm_ops);
 
 -- 管理語彙(タグ日本語名 + 英語プロンプト等のエイリアス)

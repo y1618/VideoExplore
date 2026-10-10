@@ -40,6 +40,9 @@ class Video(Base):
     thumbnail_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     proxy_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     profile: Mapped[str] = mapped_column(String, default="fast")
+    favorite: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    delete_marked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    play_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -93,3 +96,15 @@ class VideoTag(Base):
 
     video: Mapped["Video"] = relationship(back_populates="tags")
     taxonomy: Mapped["Taxonomy"] = relationship(back_populates="video_tags")
+
+
+class Comment(Base):
+    __tablename__ = "comments"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    video_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("videos.id", ondelete="CASCADE"), index=True
+    )
+    text: Mapped[str] = mapped_column(Text)
+    hashtags: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
